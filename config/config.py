@@ -1,16 +1,23 @@
 """
 Configuration loader for the pricing engine.
 """
+
 import os
 import yaml
 import logging
 from typing import Dict, Any
+from dotenv import load_dotenv
+from pathlib import Path
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class Config:
     """
     Configuration class for the pricing engine.
-    Loads configuration from YAML files.
+    Loads configuration from YAML files and environment variables.
+    Environment variables take precedence over YAML configuration.
     """
 
     def __init__(self, config_path: str = None):
@@ -23,6 +30,7 @@ class Config:
         self._config = {}
         self._config_path = config_path or self._find_config_file()
         self._load_config()
+        self._override_with_env_vars()
 
     def _find_config_file(self) -> str:
         """
@@ -55,11 +63,50 @@ class Config:
         Load the configuration from the YAML file.
         """
         try:
-            with open(self._config_path, 'r') as f:
+            with open(self._config_path, "r") as f:
                 self._config = yaml.safe_load(f)
         except Exception as e:
             logging.error(f"Error loading configuration from {self._config_path}: {e}")
-            raise
+            self._config = {}
+
+    def _override_with_env_vars(self) -> None:
+        """
+        Override sensitive configuration values with environment variables.
+        Only credentials and sensitive values should be in environment variables.
+        """
+        # Supabase credentials (sensitive)
+        if os.environ.get("SUPABASE_URL"):
+            self._set_nested_value("supabase.url", os.environ["SUPABASE_URL"])
+
+        if os.environ.get("SUPABASE_KEY"):
+            self._set_nested_value("supabase.key", os.environ["SUPABASE_KEY"])
+
+        # Other sensitive credentials would be added here
+        # Example: AWS credentials, API keys, etc.
+
+        # Logging level can be set via environment for convenience in different environments
+        if os.environ.get("LOG_LEVEL"):
+            self._set_nested_value("logging.level", os.environ["LOG_LEVEL"])
+
+    def _set_nested_value(self, key_path: str, value: Any) -> None:
+        """
+        Set a nested value in the configuration dictionary.
+
+        Args:
+            key_path: Dot-separated path to the configuration value (e.g., "supabase.url").
+            value: Value to set.
+        """
+        keys = key_path.split(".")
+        current = self._config
+
+        # Navigate to the nested location
+        for key in keys[:-1]:
+            if key not in current:
+                current[key] = {}
+            current = current[key]
+
+        # Set the value
+        current[keys[-1]] = value
 
     def get(self, key: str, default: Any = None) -> Any:
         """
@@ -72,7 +119,7 @@ class Config:
         Returns:
             Any: The configuration value or default.
         """
-        keys = key.split('.')
+        keys = key.split(".")
         value = self._config
 
         for k in keys:

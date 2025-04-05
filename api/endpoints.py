@@ -4,7 +4,7 @@ API endpoints for the pricing engine.
 
 from typing import Dict, List, Any
 import json
-from data.loader import SupabaseLoader
+from data.factory import get_data_loader
 from optimization.engine import OptimizationEngine
 from utils.logging import setup_logger
 
@@ -42,8 +42,8 @@ def check_violations(event, context):
                 ),
             }
 
-        # Load data from Supabase
-        loader = SupabaseLoader()
+        # Load data from configured source
+        loader = get_data_loader()
         data = loader.get_product_group_data(product_ids)
 
         # Check if products exist
@@ -102,8 +102,8 @@ def optimize_prices(event, context):
                 ),
             }
 
-        # Load data from Supabase
-        loader = SupabaseLoader()
+        # Load data from configured source
+        loader = get_data_loader()
         data = loader.get_product_group_data(product_ids)
 
         # Check if products exist

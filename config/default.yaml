@@ -5,21 +5,25 @@ price_ladder:
   type: "x.99"  # Every digit minus 1 øre
   max_price: 2000  # Max price in NOK
 
-# Price change constraints
+# Price change constraints (business configuration parameters)
 price_change:
   min_pct: -10  # Minimum price change percentage
   max_pct: 10   # Maximum price change percentage
 
-# Supabase configuration
+# Data source configuration
+data_source:
+  use_local: true  # Set to true to use local CSV files instead of Supabase
+  local_data_path: "data/local"  # Path to local data files
+
+# Supabase configuration (should be set via environment variables)
 supabase:
-  url: "YOUR_SUPABASE_URL"
-  key: "YOUR_SUPABASE_API_KEY"
+  # URL and key should be set in .env file
   tables:
     products: "products"
     item_groups: "item_groups"
     item_group_members: "item_group_members"
 
-# Logging configuration
+# Logging configuration (level can be overridden by environment variables)
 logging:
   level: "INFO"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

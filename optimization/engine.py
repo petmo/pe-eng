@@ -46,20 +46,38 @@ class OptimizationEngine:
 
     def _generate_price_ladder(self) -> List[float]:
         """
-        Generate the price ladder based on configuration.
+        Generate the price ladder based on configuration or load from CSV.
 
         Returns:
             List[float]: List of valid prices.
         """
+        use_local = config.get("data_source.use_local", False)
+
+        if use_local:
+            # Load price ladder from CSV if using local data
+            from data.local_loader import LocalCSVLoader
+
+            local_loader = LocalCSVLoader()
+            price_ladder = local_loader.get_price_ladder()
+
+            if price_ladder:
+                logger.info(f"Loaded {len(price_ladder)} prices from price ladder CSV")
+                return price_ladder
+
+        # Fall back to generating the price ladder from configuration
         ladder_type = config.get("price_ladder.type", "x.99")
         max_price = config.get("price_ladder.max_price", 2000)
 
         if ladder_type == "x.99":
             # Generate prices like 0.99, 1.99, 2.99, etc.
-            return [float(f"{i}.99") for i in range(int(max_price))]
+            ladder = [float(f"{i}.99") for i in range(int(max_price))]
+            logger.info(f"Generated {len(ladder)} prices for price ladder")
+            return ladder
         else:
             # Default: 0.01 increments
-            return [round(i * 0.01, 2) for i in range(1, int(max_price * 100) + 1)]
+            ladder = [round(i * 0.01, 2) for i in range(1, int(max_price * 100) + 1)]
+            logger.info(f"Generated {len(ladder)} prices for price ladder")
+            return ladder
 
     def _build_constraints(self, scope_product_ids: List[str]) -> List[Constraint]:
         """

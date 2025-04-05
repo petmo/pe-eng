@@ -5,7 +5,7 @@ Main entry point for the pricing engine.
 import argparse
 import json
 import pandas as pd
-from data.loader import SupabaseLoader
+from data.factory import get_data_loader
 from optimization.engine import OptimizationEngine
 from utils.logging import setup_logger
 
@@ -49,8 +49,8 @@ def main():
         parser.print_help()
         return
 
-    # Load data from Supabase
-    loader = SupabaseLoader()
+    # Load data from configured source
+    loader = get_data_loader()
     data = loader.get_product_group_data(args.product_ids)
 
     # Check if products exist
