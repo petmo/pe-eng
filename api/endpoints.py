@@ -53,18 +53,22 @@ def check_violations(event, context):
                 "body": json.dumps({"success": False, "error": "No products found"}),
             }
 
-        # Create violation detector
+        # Create optimization engine
         engine = OptimizationEngine(
             data["products"], data["item_groups"], data["item_group_members"]
         )
 
-        # Run hygiene check
-        result = engine.run_hygiene_check(product_ids)
+        # Run violation detection
+        result = engine.detect_violations(product_ids)
+
+        # Add constraint types filter info if provided
+        if constraint_types:
+            result["constraint_types_filter"] = constraint_types
 
         return {"statusCode": 200, "body": json.dumps(result)}
 
     except Exception as e:
-        logger.error(f"Error in check_violations: {e}")
+        logger.error(f"Error in check_violations: {e}", exc_info=True)
         return {
             "statusCode": 500,
             "body": json.dumps({"success": False, "error": str(e)}),
@@ -92,7 +96,25 @@ def optimize_prices(event, context):
 
         # Get parameters from request
         product_ids = body.get("product_ids", [])
-        hygiene_only = body.get("hygiene_only", True)
+        mode = body.get("mode", "violation_detection")  # Default to violation detection
+        kpi_weights = body.get("kpi_weights")  # Only used in kpi_optimization mode
+
+        # Validate mode
+        valid_modes = [
+            "violation_detection",
+            "hygiene_optimization",
+            "kpi_optimization",
+        ]
+        if mode not in valid_modes:
+            return {
+                "statusCode": 400,
+                "body": json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Invalid mode: {mode}. Valid modes are: {', '.join(valid_modes)}",
+                    }
+                ),
+            }
 
         if not product_ids:
             return {
@@ -118,13 +140,13 @@ def optimize_prices(event, context):
             data["products"], data["item_groups"], data["item_group_members"]
         )
 
-        # Run optimization
-        result = engine.run_optimization(product_ids, hygiene_only)
+        # Run optimization in the specified mode
+        result = engine.run_optimization(product_ids, mode, kpi_weights)
 
         return {"statusCode": 200, "body": json.dumps(result)}
 
     except Exception as e:
-        logger.error(f"Error in optimize_prices: {e}")
+        logger.error(f"Error in optimize_prices: {e}", exc_info=True)
         return {
             "statusCode": 500,
             "body": json.dumps({"success": False, "error": str(e)}),

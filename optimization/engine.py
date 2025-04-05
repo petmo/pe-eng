@@ -20,6 +20,11 @@ logger = setup_logger(__name__)
 class OptimizationEngine:
     """
     Main optimization engine for price optimization.
+
+    Supports three modes of operation:
+    1. Violation Detection - Identifies constraint violations without suggesting changes
+    2. Hygiene Mode - Recommends minimal price changes to comply with constraints
+    3. Optimization Mode - Optimizes KPIs (profit, revenue, etc.) while respecting constraints
     """
 
     def __init__(
@@ -139,17 +144,20 @@ class OptimizationEngine:
         idx = np.abs(np.array(self.price_ladder) - price).argmin()
         return self.price_ladder[idx]
 
-    def run_hygiene_check(self, scope_product_ids: List[str]) -> Dict[str, Any]:
+    def detect_violations(self, scope_product_ids: List[str]) -> Dict[str, Any]:
         """
-        Run a hygiene check for the given products.
+        Mode 1: Violation Detection - Identify constraint violations for the given products
+        without suggesting any price changes.
 
         Args:
-            scope_product_ids: List of product IDs to check.
+            scope_product_ids: List of product IDs to check for violations.
 
         Returns:
-            Dict[str, Any]: Results of the hygiene check, including violations.
+            Dict[str, Any]: Results of the violation detection, including violations.
         """
-        logger.info(f"Running hygiene check for {len(scope_product_ids)} products")
+        logger.info(
+            f"Running violation detection for {len(scope_product_ids)} products"
+        )
 
         # Detect violations
         df_violations = self.violation_detector.detect_violations(
@@ -163,6 +171,7 @@ class OptimizationEngine:
 
         return {
             "success": True,
+            "mode": "violation_detection",
             "violations": (
                 df_violations.to_dict(orient="records")
                 if not df_violations.empty
@@ -171,24 +180,140 @@ class OptimizationEngine:
             "summary": violations_summary,
         }
 
-    def run_optimization(
-        self, scope_product_ids: List[str], hygiene_only: bool = True
+    def run_hygiene_optimization(self, scope_product_ids: List[str]) -> Dict[str, Any]:
+        """
+        Mode 2: Hygiene Optimization - Recommend minimal price changes to comply with constraints.
+
+        Args:
+            scope_product_ids: List of product IDs to optimize for constraint compliance.
+
+        Returns:
+            Dict[str, Any]: Results of the hygiene optimization, including new prices and any remaining violations.
+        """
+        logger.info(
+            f"Running hygiene optimization for {len(scope_product_ids)} products"
+        )
+
+        # First check for violations
+        df_violations = self.violation_detector.detect_violations(
+            product_ids=scope_product_ids
+        )
+        violations_summary = self.violation_detector.get_violations_summary(
+            df_violations
+        )
+
+        # If no violations, no changes needed
+        if df_violations.empty:
+            return {
+                "success": True,
+                "mode": "hygiene_optimization",
+                "message": "No violations found. No price changes needed.",
+                "optimized_prices": [],
+                "violations": [],
+                "summary": violations_summary,
+            }
+
+        # Run optimization with minimal price changes objective
+        result = self._run_optimization_model(
+            scope_product_ids=scope_product_ids,
+            objective_type="minimal_changes",
+            kpi_weights=None,
+        )
+
+        # Add mode information
+        result["mode"] = "hygiene_optimization"
+
+        return result
+
+    def run_kpi_optimization(
+        self, scope_product_ids: List[str], kpi_weights: Dict[str, float] = None
     ) -> Dict[str, Any]:
         """
-        Run price optimization for the given products.
+        Mode 3: KPI Optimization - Optimize KPIs (profit, revenue, etc.) while respecting constraints.
 
         Args:
             scope_product_ids: List of product IDs to optimize.
-            hygiene_only: If True, only run a hygiene check. If False, run full optimization.
+            kpi_weights: Dictionary of KPI weights for the optimization objective.
+                         e.g. {"profit": 0.7, "revenue": 0.3}
 
         Returns:
-            Dict[str, Any]: Results of the optimization, including new prices and violations.
+            Dict[str, Any]: Results of the KPI optimization, including new prices, KPI impacts, and any constraint violations.
         """
-        if hygiene_only:
-            return self.run_hygiene_check(scope_product_ids)
+        logger.info(f"Running KPI optimization for {len(scope_product_ids)} products")
 
-        logger.info(f"Running optimization for {len(scope_product_ids)} products")
+        # Set default KPI weights if not provided
+        if kpi_weights is None:
+            kpi_weights = {"profit": 1.0}  # Default to profit maximization
 
+        # Run optimization with KPI optimization objective
+        result = self._run_optimization_model(
+            scope_product_ids=scope_product_ids,
+            objective_type="kpi_optimization",
+            kpi_weights=kpi_weights,
+        )
+
+        # Add mode and KPI weights information
+        result["mode"] = "kpi_optimization"
+        result["kpi_weights"] = kpi_weights
+
+        # TODO: Calculate KPI impacts when AI forecasting model is integrated
+        # For now, we'll just add a placeholder
+        result["kpi_impacts"] = {
+            "estimated_profit_change": "Not yet implemented - requires AI forecast model",
+            "estimated_revenue_change": "Not yet implemented - requires AI forecast model",
+        }
+
+        return result
+
+    def run_optimization(
+        self,
+        scope_product_ids: List[str],
+        mode: str = "violation_detection",
+        kpi_weights: Dict[str, float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Main entry point for running optimization in any of the three modes.
+
+        Args:
+            scope_product_ids: List of product IDs to optimize.
+            mode: Optimization mode ("violation_detection", "hygiene_optimization", or "kpi_optimization").
+            kpi_weights: Dictionary of KPI weights for KPI optimization (only used in "kpi_optimization" mode).
+
+        Returns:
+            Dict[str, Any]: Results of the optimization, format depends on the mode.
+        """
+        logger.info(
+            f"Running optimization in '{mode}' mode for {len(scope_product_ids)} products"
+        )
+
+        if mode == "violation_detection":
+            return self.detect_violations(scope_product_ids)
+        elif mode == "hygiene_optimization":
+            return self.run_hygiene_optimization(scope_product_ids)
+        elif mode == "kpi_optimization":
+            return self.run_kpi_optimization(scope_product_ids, kpi_weights)
+        else:
+            error_msg = f"Unknown optimization mode: {mode}. Valid modes are 'violation_detection', 'hygiene_optimization', and 'kpi_optimization'."
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+
+    def _run_optimization_model(
+        self,
+        scope_product_ids: List[str],
+        objective_type: str,
+        kpi_weights: Dict[str, float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Internal method to run the optimization model with different objectives.
+
+        Args:
+            scope_product_ids: List of product IDs to optimize.
+            objective_type: Type of objective ("minimal_changes" or "kpi_optimization").
+            kpi_weights: Dictionary of KPI weights for KPI optimization (ignored for minimal_changes).
+
+        Returns:
+            Dict[str, Any]: Results of the optimization.
+        """
         # Get products in scope
         df_scope_products = self.df_products[
             self.df_products["product_id"].isin(scope_product_ids)
@@ -202,7 +327,14 @@ class OptimizationEngine:
             }
 
         # Create the optimization model
-        model = pulp.LpProblem(name="Price_Optimization", sense=pulp.LpMaximize)
+        model = pulp.LpProblem(
+            name=f"Price_{objective_type}",
+            sense=(
+                pulp.LpMaximize
+                if objective_type == "kpi_optimization"
+                else pulp.LpMinimize
+            ),
+        )
 
         # Create decision variables for each product in scope
         # Note: Even though we're only optimizing scope products, we need variables for all
@@ -258,9 +390,79 @@ class OptimizationEngine:
                     cat=pulp.LpContinuous,
                 )
 
-        # For hygiene runs, we're just checking if the current prices satisfy constraints
-        # So we'll set the objective to a dummy value
-        model += 0, "Dummy_Objective"
+        # Set objective function based on objective_type
+        if objective_type == "minimal_changes":
+            # Minimize price changes
+            deviation_vars = {}
+            for pid in scope_product_ids:
+                current_price = self.df_products.loc[
+                    self.df_products["product_id"] == pid, "price"
+                ].iloc[0]
+
+                # Create variable for absolute deviation
+                deviation_vars[pid] = pulp.LpVariable(
+                    name=f"deviation_{pid}", lowBound=0, cat=pulp.LpContinuous
+                )
+
+                # Add constraints for absolute deviation
+                model += (
+                    price_vars[pid] - current_price <= deviation_vars[pid],
+                    f"deviation_pos_{pid}",
+                )
+                model += (
+                    current_price - price_vars[pid] <= deviation_vars[pid],
+                    f"deviation_neg_{pid}",
+                )
+
+            # Objective: minimize sum of deviations
+            model += pulp.lpSum(deviation_vars.values()), "Minimize_Price_Changes"
+
+        elif objective_type == "kpi_optimization":
+            # For now, we'll use a simple profit model
+            # In the future, this would be replaced with AI model predictions
+
+            # Default to profit maximization if no weights provided
+            if not kpi_weights:
+                kpi_weights = {"profit": 1.0}
+
+            # Simple profit model: price * estimated_units_sold
+            # For now, we'll assume a simple linear demand model where
+            # units_sold = base_units * (1 - price_elasticity * (price/base_price - 1))
+            objective_terms = []
+
+            for pid in scope_product_ids:
+                current_price = self.df_products.loc[
+                    self.df_products["product_id"] == pid, "price"
+                ].iloc[0]
+
+                # Simple assumptions for demonstration:
+                base_units = 100  # Base units sold at current price
+                price_elasticity = 1.5  # Price elasticity of demand
+                cost = current_price * 0.6  # Assume cost is 60% of current price
+
+                # Revenue component: price * estimated_units_sold
+                if "revenue" in kpi_weights and kpi_weights["revenue"] > 0:
+                    # For now, use a linear approximation for the demand curve
+                    # In reality, this would come from the AI forecasting model
+                    revenue_weight = kpi_weights.get("revenue", 0)
+                    revenue_term = revenue_weight * price_vars[pid] * base_units
+                    objective_terms.append(revenue_term)
+
+                # Profit component: (price - cost) * estimated_units_sold
+                if "profit" in kpi_weights and kpi_weights["profit"] > 0:
+                    profit_weight = kpi_weights.get("profit", 0)
+                    profit_term = profit_weight * (price_vars[pid] - cost) * base_units
+                    objective_terms.append(profit_term)
+
+            # Set the objective
+            if objective_terms:
+                model += pulp.lpSum(objective_terms), "Maximize_KPIs"
+            else:
+                # Fallback to minimal changes if no valid KPIs were specified
+                logger.warning(
+                    "No valid KPI weights provided, falling back to minimal changes objective"
+                )
+                model += 0, "Dummy_Objective"
 
         # Build and apply constraints
         constraints = self._build_constraints(list(all_product_ids))

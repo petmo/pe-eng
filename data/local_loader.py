@@ -56,8 +56,43 @@ class LocalCSVLoader:
             pd.DataFrame: DataFrame containing product data.
         """
         try:
-            df_products = pd.read_csv(self.products_path)
+            # Use more robust CSV parsing options
+            df_products = pd.read_csv(
+                self.products_path,
+                quotechar='"',
+                escapechar="\\",
+                skipinitialspace=True,
+                na_values=["", "NA", "N/A", "null"],
+                keep_default_na=True,
+            )
             logger.info(f"Loaded {len(df_products)} products from CSV")
+
+            # Log the column names for debugging
+            logger.debug(f"Products columns: {df_products.columns.tolist()}")
+
+            # Ensure column names are exactly as expected
+            column_mapping = {}
+
+            # Check for case-insensitive matches and create a mapping
+            for expected_col in [
+                "product_id",
+                "price",
+                "unit_price",
+                "categories",
+                "attributes",
+            ]:
+                for actual_col in df_products.columns:
+                    if (
+                        expected_col.lower() == actual_col.lower()
+                        and expected_col != actual_col
+                    ):
+                        column_mapping[actual_col] = expected_col
+                        break
+
+            # Rename columns if needed
+            if column_mapping:
+                logger.info(f"Renaming products columns: {column_mapping}")
+                df_products = df_products.rename(columns=column_mapping)
 
             # Parse JSON attributes
             if "attributes" in df_products.columns:
@@ -72,14 +107,14 @@ class LocalCSVLoader:
                 )
 
             # Filter by product_ids if provided
-            if product_ids:
+            if product_ids and "product_id" in df_products.columns:
                 df_products = df_products[df_products["product_id"].isin(product_ids)]
                 logger.info(f"Filtered to {len(df_products)} products")
 
             return df_products
 
         except Exception as e:
-            logger.error(f"Error loading products from CSV: {e}")
+            logger.error(f"Error loading products from CSV: {e}", exc_info=True)
             return pd.DataFrame()
 
     def get_item_groups(self) -> pd.DataFrame:
@@ -90,12 +125,42 @@ class LocalCSVLoader:
             pd.DataFrame: DataFrame containing item group data.
         """
         try:
-            df_item_groups = pd.read_csv(self.item_groups_path)
+            # Use more robust CSV parsing options
+            df_item_groups = pd.read_csv(
+                self.item_groups_path,
+                quotechar='"',
+                escapechar="\\",
+                skipinitialspace=True,
+                na_values=["", "NA", "N/A", "null"],
+                keep_default_na=True,
+            )
             logger.info(f"Loaded {len(df_item_groups)} item groups from CSV")
+
+            # Log the column names for debugging
+            logger.debug(f"Item groups columns: {df_item_groups.columns.tolist()}")
+
+            # Ensure column names are exactly as expected
+            column_mapping = {}
+
+            # Check for case-insensitive matches and create a mapping
+            for expected_col in ["group_id", "group_type", "use_price_per_unit"]:
+                for actual_col in df_item_groups.columns:
+                    if (
+                        expected_col.lower() == actual_col.lower()
+                        and expected_col != actual_col
+                    ):
+                        column_mapping[actual_col] = expected_col
+                        break
+
+            # Rename columns if needed
+            if column_mapping:
+                logger.info(f"Renaming item groups columns: {column_mapping}")
+                df_item_groups = df_item_groups.rename(columns=column_mapping)
+
             return df_item_groups
 
         except Exception as e:
-            logger.error(f"Error loading item groups from CSV: {e}")
+            logger.error(f"Error loading item groups from CSV: {e}", exc_info=True)
             return pd.DataFrame()
 
     def get_item_group_members(
@@ -111,13 +176,52 @@ class LocalCSVLoader:
             pd.DataFrame: DataFrame containing item group member data.
         """
         try:
-            df_item_group_members = pd.read_csv(self.item_group_members_path)
+            # Use more robust CSV parsing options
+            df_item_group_members = pd.read_csv(
+                self.item_group_members_path,
+                quotechar='"',
+                escapechar="\\",
+                skipinitialspace=True,
+                na_values=["", "NA", "N/A", "null"],
+                keep_default_na=True,
+            )
             logger.info(
                 f"Loaded {len(df_item_group_members)} item group members from CSV"
             )
 
+            # Log the column names for debugging
+            logger.debug(
+                f"Item group members columns: {df_item_group_members.columns.tolist()}"
+            )
+
+            # Ensure column names are exactly as expected
+            column_mapping = {}
+
+            # Check for case-insensitive matches and create a mapping
+            for expected_col in [
+                "group_id",
+                "product_id",
+                "order",
+                "min_index",
+                "max_index",
+            ]:
+                for actual_col in df_item_group_members.columns:
+                    if (
+                        expected_col.lower() == actual_col.lower()
+                        and expected_col != actual_col
+                    ):
+                        column_mapping[actual_col] = expected_col
+                        break
+
+            # Rename columns if needed
+            if column_mapping:
+                logger.info(f"Renaming columns: {column_mapping}")
+                df_item_group_members = df_item_group_members.rename(
+                    columns=column_mapping
+                )
+
             # Filter by group_ids if provided
-            if group_ids:
+            if group_ids and "group_id" in df_item_group_members.columns:
                 df_item_group_members = df_item_group_members[
                     df_item_group_members["group_id"].isin(group_ids)
                 ]
@@ -128,7 +232,9 @@ class LocalCSVLoader:
             return df_item_group_members
 
         except Exception as e:
-            logger.error(f"Error loading item group members from CSV: {e}")
+            logger.error(
+                f"Error loading item group members from CSV: {e}", exc_info=True
+            )
             return pd.DataFrame()
 
     def get_price_ladder(self) -> List[float]:
@@ -139,7 +245,13 @@ class LocalCSVLoader:
             List[float]: List of valid prices on the price ladder.
         """
         try:
-            df_price_ladder = pd.read_csv(self.price_ladder_path)
+            # Use more robust CSV parsing options
+            df_price_ladder = pd.read_csv(
+                self.price_ladder_path,
+                quotechar='"',
+                escapechar="\\",
+                skipinitialspace=True,
+            )
             logger.info(f"Loaded {len(df_price_ladder)} prices from price ladder CSV")
 
             # Extract prices as a list
@@ -147,7 +259,7 @@ class LocalCSVLoader:
             return price_ladder
 
         except Exception as e:
-            logger.error(f"Error loading price ladder from CSV: {e}")
+            logger.error(f"Error loading price ladder from CSV: {e}", exc_info=True)
             return []
 
     def get_product_group_data(self, product_ids: List[str]) -> Dict[str, pd.DataFrame]:

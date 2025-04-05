@@ -35,7 +35,66 @@ class ViolationDetector:
         self.df_products = df_products
         self.df_item_groups = df_item_groups
         self.df_item_group_members = df_item_group_members
+
+        # Validate column names and log warnings if expected columns are missing
+        self._validate_columns()
+
         self.constraints = self._build_constraints()
+
+    def _validate_columns(self):
+        """
+        Validate column names in the DataFrames and log warnings for missing columns.
+        """
+        # Expected column names
+        expected_products_cols = ["product_id", "price", "unit_price", "attributes"]
+        expected_item_groups_cols = ["group_id", "group_type", "use_price_per_unit"]
+        expected_item_group_members_cols = [
+            "group_id",
+            "product_id",
+            "order",
+            "min_index",
+            "max_index",
+        ]
+
+        # Check products columns
+        missing_product_cols = [
+            col for col in expected_products_cols if col not in self.df_products.columns
+        ]
+        if missing_product_cols:
+            logger.warning(
+                f"Missing expected columns in products DataFrame: {missing_product_cols}"
+            )
+            logger.info(
+                f"Available columns in products DataFrame: {list(self.df_products.columns)}"
+            )
+
+        # Check item groups columns
+        missing_group_cols = [
+            col
+            for col in expected_item_groups_cols
+            if col not in self.df_item_groups.columns
+        ]
+        if missing_group_cols:
+            logger.warning(
+                f"Missing expected columns in item_groups DataFrame: {missing_group_cols}"
+            )
+            logger.info(
+                f"Available columns in item_groups DataFrame: {list(self.df_item_groups.columns)}"
+            )
+
+        # Check item group members columns
+        missing_member_cols = [
+            col
+            for col in expected_item_group_members_cols
+            if col not in self.df_item_group_members.columns
+        ]
+        if missing_member_cols:
+            logger.warning(
+                f"Missing expected columns in item_group_members DataFrame: {missing_member_cols}"
+            )
+            logger.info(
+                f"Available columns in item_group_members DataFrame: {list(self.df_item_group_members.columns)}"
+            )
 
     def _build_constraints(self) -> Dict[str, List[Constraint]]:
         """
@@ -49,6 +108,25 @@ class ViolationDetector:
             "good_better_best": [],
             "bigger_pack_better_value": [],
         }
+
+        # Check if we have all the required columns
+        required_group_cols = ["group_id", "group_type"]
+        required_member_cols = ["group_id", "product_id"]
+
+        missing_group_cols = [
+            col for col in required_group_cols if col not in self.df_item_groups.columns
+        ]
+        missing_member_cols = [
+            col
+            for col in required_member_cols
+            if col not in self.df_item_group_members.columns
+        ]
+
+        if missing_group_cols or missing_member_cols:
+            logger.error(
+                f"Missing required columns for building constraints: {missing_group_cols + missing_member_cols}"
+            )
+            return constraints
 
         # Process each item group
         for _, group_row in self.df_item_groups.iterrows():

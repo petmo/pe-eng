@@ -21,23 +21,35 @@ def main():
     # Add subparsers for different commands
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
-    # Check violations command
-    check_parser = subparsers.add_parser("check", help="Check violations")
-    check_parser.add_argument(
+    # Violation detection command
+    detect_parser = subparsers.add_parser("detect", help="Detect constraint violations")
+    detect_parser.add_argument(
         "--product-ids", "-p", nargs="+", required=True, help="Product IDs to check"
     )
-    check_parser.add_argument(
+    detect_parser.add_argument(
         "--constraint-types", "-c", nargs="+", help="Constraint types to check"
     )
-    check_parser.add_argument("--output", "-o", help="Output file for results (JSON)")
+    detect_parser.add_argument("--output", "-o", help="Output file for results (JSON)")
 
-    # Optimize command
-    optimize_parser = subparsers.add_parser("optimize", help="Optimize prices")
+    # Hygiene optimization command
+    hygiene_parser = subparsers.add_parser(
+        "hygiene", help="Run hygiene optimization to fix violations"
+    )
+    hygiene_parser.add_argument(
+        "--product-ids", "-p", nargs="+", required=True, help="Product IDs to optimize"
+    )
+    hygiene_parser.add_argument("--output", "-o", help="Output file for results (JSON)")
+
+    # KPI optimization command
+    optimize_parser = subparsers.add_parser("optimize", help="Run KPI optimization")
     optimize_parser.add_argument(
         "--product-ids", "-p", nargs="+", required=True, help="Product IDs to optimize"
     )
     optimize_parser.add_argument(
-        "--hygiene-only", "-h", action="store_true", help="Run hygiene check only"
+        "--kpi-weights",
+        "-k",
+        type=json.loads,
+        help='KPI weights as JSON string, e.g. \'{"profit": 0.7, "revenue": 0.3}\'',
     )
     optimize_parser.add_argument(
         "--output", "-o", help="Output file for results (JSON)"
@@ -64,23 +76,51 @@ def main():
     )
 
     # Run command
-    if args.command == "check":
-        result = engine.run_hygiene_check(args.product_ids)
+    if args.command == "detect":
+        result = engine.detect_violations(args.product_ids)
 
         # Print results
         if result["violations"]:
             logger.info(f"Found {len(result['violations'])} violations")
             for violation in result["violations"]:
-                logger.info(f"Violation: {violation}")
+                logger.warning(f"Violation: {violation}")
         else:
             logger.info("No violations found")
 
-    elif args.command == "optimize":
-        result = engine.run_optimization(args.product_ids, args.hygiene_only)
+    elif args.command == "hygiene":
+        result = engine.run_hygiene_optimization(args.product_ids)
 
         # Print results
         if result["success"]:
-            logger.info("Optimization successful")
+            logger.info("Hygiene optimization successful")
+
+            if result["optimized_prices"]:
+                logger.info("Optimized prices:")
+                for price in result["optimized_prices"]:
+                    if (
+                        abs(price["price_change_pct"]) > 0.01
+                    ):  # Only show prices that changed
+                        logger.info(
+                            f"Product {price['product_id']}: {price['current_price']} -> {price['optimized_price_on_ladder']} ({price['price_change_pct']:.2f}%)"
+                        )
+            else:
+                logger.info("No price changes needed")
+
+            if result["violations"]:
+                logger.warning(
+                    f"Found {len(result['violations'])} remaining violations after optimization"
+                )
+        else:
+            logger.error(f"Hygiene optimization failed: {result.get('error')}")
+
+    elif args.command == "optimize":
+        kpi_weights = args.kpi_weights if args.kpi_weights else {"profit": 1.0}
+        result = engine.run_kpi_optimization(args.product_ids, kpi_weights)
+
+        # Print results
+        if result["success"]:
+            logger.info("KPI optimization successful")
+            logger.info(f"KPI weights used: {result['kpi_weights']}")
 
             if result["optimized_prices"]:
                 logger.info("Optimized prices:")
@@ -89,12 +129,17 @@ def main():
                         f"Product {price['product_id']}: {price['current_price']} -> {price['optimized_price_on_ladder']} ({price['price_change_pct']:.2f}%)"
                     )
 
+            if "kpi_impacts" in result:
+                logger.info("Estimated KPI impacts:")
+                for kpi, impact in result["kpi_impacts"].items():
+                    logger.info(f"  {kpi}: {impact}")
+
             if result["violations"]:
-                logger.info(
-                    f"Found {len(result['violations'])} violations in optimized prices"
+                logger.warning(
+                    f"Found {len(result['violations'])} violations with optimized prices"
                 )
         else:
-            logger.error(f"Optimization failed: {result.get('error')}")
+            logger.error(f"KPI optimization failed: {result.get('error')}")
 
     # Save results to file if output specified
     if args.output and "result" in locals():

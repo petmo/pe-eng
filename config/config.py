@@ -66,7 +66,10 @@ class Config:
             with open(self._config_path, "r") as f:
                 self._config = yaml.safe_load(f)
         except Exception as e:
-            logging.error(f"Error loading configuration from {self._config_path}: {e}")
+            logging.error(
+                f"Error loading configuration from {self._config_path}: {e}",
+                exc_info=True,
+            )
             self._config = {}
 
     def _override_with_env_vars(self) -> None:

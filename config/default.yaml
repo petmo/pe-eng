@@ -26,4 +26,6 @@ supabase:
 # Logging configuration (level can be overridden by environment variables)
 logging:
   level: "INFO"
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  use_color: true  # Set to false to disable colored output
+  format: "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+  datefmt: "%Y-%m-%d %H:%M:%S"
