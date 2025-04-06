@@ -2,10 +2,10 @@
 API endpoints for the pricing engine.
 """
 
-from typing import Dict, List, Any
+from typing import Dict
 import json
 from data.factory import get_data_loader
-from optimization.engine import OptimizationEngine
+from core.optimization import OptimizationEngine
 from utils.logging import setup_logger
 
 logger = setup_logger(__name__)

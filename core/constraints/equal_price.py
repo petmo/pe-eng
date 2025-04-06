@@ -1,10 +1,11 @@
 """
 Equal price constraint implementation.
 """
+
 import pandas as pd
-from typing import List, Dict, Any
+from typing import List, Dict
 import pulp
-from optimization.constraints.base import Constraint
+from core.constraints.base import Constraint
 from utils.logging import setup_logger
 
 logger = setup_logger(__name__)
@@ -37,7 +38,9 @@ class EqualPriceConstraint(Constraint):
             pd.DataFrame: DataFrame containing information about violations.
         """
         # Filter products in the group
-        df_group_products = df_products[df_products["product_id"].isin(self.product_ids)]
+        df_group_products = df_products[
+            df_products["product_id"].isin(self.product_ids)
+        ]
 
         if len(df_group_products) <= 1:
             # No violations if only one product or none
@@ -45,7 +48,9 @@ class EqualPriceConstraint(Constraint):
 
         # Check if all prices are the same
         reference_price = df_group_products["price"].iloc[0]
-        df_violations = df_group_products[df_group_products["price"] != reference_price].copy()
+        df_violations = df_group_products[
+            df_group_products["price"] != reference_price
+        ].copy()
 
         if df_violations.empty:
             # No violations
@@ -58,13 +63,28 @@ class EqualPriceConstraint(Constraint):
         df_violations["actual_value"] = df_violations["price"]
         df_violations["reference_product_id"] = df_group_products["product_id"].iloc[0]
 
-        logger.info(f"Found {len(df_violations)} equal price violations in group {self.group_id}")
+        logger.info(
+            f"Found {len(df_violations)} equal price violations in group {self.group_id}"
+        )
 
-        return df_violations[["product_id", "constraint_type", "group_id",
-                              "expected_value", "actual_value", "reference_product_id"]]
+        return df_violations[
+            [
+                "product_id",
+                "constraint_type",
+                "group_id",
+                "expected_value",
+                "actual_value",
+                "reference_product_id",
+            ]
+        ]
 
-    def apply_to_model(self, model: pulp.LpProblem, variables: Dict[str, pulp.LpVariable],
-                       df_products: pd.DataFrame, **kwargs) -> None:
+    def apply_to_model(
+        self,
+        model: pulp.LpProblem,
+        variables: Dict[str, pulp.LpVariable],
+        df_products: pd.DataFrame,
+        **kwargs,
+    ) -> None:
         """
         Apply this constraint to an optimization model.
 
@@ -87,7 +107,9 @@ class EqualPriceConstraint(Constraint):
         for product_id in product_ids[1:]:
             model += (
                 variables[product_id] == variables[first_product_id],
-                f"equal_price_{self.group_id}_{product_id}"
+                f"equal_price_{self.group_id}_{product_id}",
             )
 
-        logger.debug(f"Added equal price constraint for group {self.group_id} with {len(product_ids)} products")
+        logger.debug(
+            f"Added equal price constraint for group {self.group_id} with {len(product_ids)} products"
+        )

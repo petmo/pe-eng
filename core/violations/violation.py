@@ -4,10 +4,10 @@ Violation detection functionality for the pricing engine.
 
 import pandas as pd
 from typing import List, Dict, Any, Optional, Tuple
-from optimization.constraints.base import Constraint
-from optimization.constraints.equal_price import EqualPriceConstraint
-from optimization.constraints.price_order import PriceOrderConstraint
-from optimization.constraints.pack_value import PackValueConstraint
+from core.constraints.base import Constraint
+from core.constraints.equal_price import EqualPriceConstraint
+from core.constraints.price_order import PriceOrderConstraint
+from core.constraints.pack_value import PackValueConstraint
 from utils.logging import setup_logger
 
 logger = setup_logger(__name__)

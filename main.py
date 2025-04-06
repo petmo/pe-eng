@@ -4,9 +4,8 @@ Main entry point for the pricing engine.
 
 import argparse
 import json
-import pandas as pd
 from data.factory import get_data_loader
-from optimization.engine import OptimizationEngine
+from core.optimization import OptimizationEngine
 from utils.logging import setup_logger
 
 logger = setup_logger(__name__)

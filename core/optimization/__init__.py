@@ -2,7 +2,6 @@
 Optimization module for the Pricing Engine.
 """
 
-from optimization.engine import OptimizationEngine
-from optimization.violation import ViolationDetector
+from core.violations.violation import ViolationDetector
 
 __all__ = ["OptimizationEngine", "ViolationDetector"]
