@@ -1,8 +1,5 @@
 """
 Application factory and configuration for the pricing engine.
-
-This module provides the application factory pattern for creating the FastAPI app
-and contains core configuration functionality.
 """
 
 from fastapi import FastAPI, Request
@@ -13,11 +10,9 @@ import time
 import uvicorn
 from typing import Optional, Dict, Any
 
-from api.models import ViolationRequest, ViolationResponse
-from api.routes import violations_router, optimization_router
-from core import OptimizationEngine
-from data import get_data_loader
+from api.routers import combined_router
 from utils.logging import setup_logger
+from utils.debug import debug_routes_middleware, debug_routes_handler
 from config.config import config
 from dotenv import load_dotenv
 
@@ -53,9 +48,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Add routers
-    app.include_router(violations_router, prefix="/api", tags=["violations"])
-    app.include_router(optimization_router, prefix="/api", tags=["optimization"])
+    # Add router
+    app.include_router(combined_router, prefix="/api")
 
     # Add middleware for request timing
     @app.middleware("http")
@@ -67,12 +61,22 @@ def create_app() -> FastAPI:
         response.headers["X-Process-Time"] = str(process_time)
         return response
 
+    # Add debug routes middleware
+    app.middleware("http")(debug_routes_middleware)
+
     # Add middleware for API key validation
     @app.middleware("http")
     async def validate_api_key(request: Request, call_next):
         """Validate API key for protected routes."""
         # Skip auth for certain paths
-        public_paths = ["/docs", "/redoc", "/openapi.json", "/ping", "/"]
+        public_paths = [
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            "/ping",
+            "/",
+            "/debug-routes",
+        ]
         if any(request.url.path.startswith(path) for path in public_paths):
             return await call_next(request)
 
@@ -172,40 +176,11 @@ def create_app() -> FastAPI:
 
         return receive
 
-    # Direct route for /api/check-violations endpoint
-    @app.post(
-        "/api/check-violations", tags=["violations"], response_model=ViolationResponse
-    )
-    async def check_violations_direct(request: ViolationRequest):
-        """
-        Direct endpoint for check-violations to match the expected URL path from Supabase.
-        """
-        logger.info(
-            f"Direct check_violations endpoint called with {len(request.product_ids)} products"
-        )
-
-        # Load data from configured source
-        loader = get_data_loader()
-        data = loader.get_product_group_data(request.product_ids)
-
-        # Check if products exist
-        if data["products"].empty:
-            logger.warning(f"No products found for IDs: {request.product_ids}")
-            raise HTTPException(status_code=404, detail="No products found")
-
-        # Create optimization engine
-        engine = OptimizationEngine(
-            data["products"], data["item_groups"], data["item_group_members"]
-        )
-
-        # Run violation detection
-        result = engine.detect_violations(request.product_ids)
-
-        # Add constraint types filter info if provided
-        if request.constraint_types:
-            result["constraint_types_filter"] = request.constraint_types
-
-        return result
+    # Add debug routes endpoint
+    @app.get("/debug-routes", include_in_schema=False)
+    async def debug_routes(request: Request):
+        """Debug endpoint to list all registered routes."""
+        return await debug_routes_handler(request)
 
     # Custom exception handlers
     @app.exception_handler(RequestValidationError)

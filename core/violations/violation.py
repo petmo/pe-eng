@@ -202,9 +202,15 @@ class ViolationDetector:
                 continue
 
             for constraint in self.constraints[constraint_type]:
+                logger.debug(
+                    f"Checking {constraint_type} {constraint} for:\n{df_products.to_string()}"
+                )
                 violation_df = constraint.check_violations(df_products)
                 if not violation_df.empty:
+                    logger.debug(f"Found violations:\n{violation_df.to_string()}")
                     violations.append(violation_df)
+                else:
+                    logger.debug("Empty violations")
 
         # Combine all violations
         if not violations:
