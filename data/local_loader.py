@@ -10,6 +10,7 @@ from config.config import config
 from utils.logging import setup_logger
 from data.loader import DataLoader
 from data.local.file_system import FileSystem
+from utils.parameters import ensure_numeric_columns
 
 logger = setup_logger(__name__)
 
@@ -65,8 +66,8 @@ class LocalCSVLoader(DataLoader):
             )
             logger.info(f"Loaded {len(df_products)} products from CSV")
 
-            # Log the column names for debugging
-            logger.debug(f"Products columns: {df_products.columns.tolist()}")
+            # Ensure price and unit_price are numeric
+            df_products = ensure_numeric_columns(df_products, ["price", "unit_price"])
 
             # Ensure column names are exactly as expected
             column_mapping = {}
@@ -164,15 +165,6 @@ class LocalCSVLoader(DataLoader):
     def get_item_group_members(
         self, group_ids: Optional[List[str]] = None
     ) -> pd.DataFrame:
-        """
-        Fetch item group members from local CSV.
-
-        Args:
-            group_ids: Optional list of group IDs to fetch members for. If None, fetches all members.
-
-        Returns:
-            pd.DataFrame: DataFrame containing item group member data.
-        """
         try:
             # Use more robust CSV parsing options
             df_item_group_members = pd.read_csv(
@@ -187,9 +179,9 @@ class LocalCSVLoader(DataLoader):
                 f"Loaded {len(df_item_group_members)} item group members from CSV"
             )
 
-            # Log the column names for debugging
-            logger.debug(
-                f"Item group members columns: {df_item_group_members.columns.tolist()}"
+            # Ensure numeric columns are actually numeric
+            df_item_group_members = ensure_numeric_columns(
+                df_item_group_members, ["order", "min_index", "max_index"]
             )
 
             # Ensure column names are exactly as expected

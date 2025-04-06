@@ -9,6 +9,7 @@ from core.constraints.equal_price import EqualPriceConstraint
 from core.constraints.price_order import PriceOrderConstraint
 from core.constraints.pack_value import PackValueConstraint
 from utils.logging import setup_logger
+from utils.validation import ensure_numeric_columns
 
 logger = setup_logger(__name__)
 
@@ -32,6 +33,13 @@ class ViolationDetector:
             df_item_groups: DataFrame containing item group data.
             df_item_group_members: DataFrame containing item group member data.
         """
+
+        df_products = ensure_numeric_columns(df_products, ["price", "unit_price"])
+
+        df_item_group_members = ensure_numeric_columns(
+            df_item_group_members, ["order", "min_index", "max_index"]
+        )
+
         self.df_products = df_products
         self.df_item_groups = df_item_groups
         self.df_item_group_members = df_item_group_members

@@ -13,6 +13,7 @@ from core.constraints.pack_value import PackValueConstraint
 from core.violations.violation import ViolationDetector
 from config.config import config
 from utils.logging import setup_logger
+from utils.validation import ensure_numeric_columns
 
 logger = setup_logger(__name__)
 
@@ -41,6 +42,14 @@ class OptimizationEngine:
             df_item_groups: DataFrame containing item group data.
             df_item_group_members: DataFrame containing item group member data.
         """
+        # Double-check numeric columns are properly typed
+        # (in case data came from a different source than our loaders)
+        df_products = ensure_numeric_columns(df_products, ["price", "unit_price"])
+
+        df_item_group_members = ensure_numeric_columns(
+            df_item_group_members, ["order", "min_index", "max_index"]
+        )
+
         self.df_products = df_products
         self.df_item_groups = df_item_groups
         self.df_item_group_members = df_item_group_members

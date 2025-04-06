@@ -9,6 +9,7 @@ from supabase import create_client
 from config.config import config
 from utils.logging import setup_logger
 from data.loader import DataLoader
+from utils.parameters import ensure_numeric_columns
 
 logger = setup_logger(__name__)
 
@@ -69,6 +70,11 @@ class SupabaseLoader(DataLoader):
             if response.data:
                 df_products = pd.DataFrame(response.data)
                 logger.info(f"Fetched {len(df_products)} products")
+
+                # Ensure price and unit_price are numeric
+                df_products = ensure_numeric_columns(
+                    df_products, ["price", "unit_price"]
+                )
 
                 # Parse JSON attributes if they're stored as strings
                 if "attributes" in df_products.columns:
@@ -148,6 +154,12 @@ class SupabaseLoader(DataLoader):
             if response.data:
                 df_item_group_members = pd.DataFrame(response.data)
                 logger.info(f"Fetched {len(df_item_group_members)} item group members")
+
+                # Ensure numeric columns are actually numeric
+                df_item_group_members = ensure_numeric_columns(
+                    df_item_group_members, ["order", "min_index", "max_index"]
+                )
+
                 return df_item_group_members
             else:
                 logger.warning("No item group members found")
