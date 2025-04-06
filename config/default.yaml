@@ -12,7 +12,7 @@ price_change:
 
 # Data source configuration
 data_source:
-  use_local: true  # Set to true to use local CSV files instead of Supabase
+  use_local: false  # Set to true to use local CSV files instead of Supabase
   local_data_path: "data/local"  # Path to local data files
 
 # Supabase configuration (should be set via environment variables)
