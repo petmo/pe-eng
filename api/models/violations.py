@@ -20,6 +20,22 @@ class ViolationRequest(BaseModel):
     )
 
 
+class GroupViolationRequest(BaseModel):
+    """
+    Request model for checking violations by one or many groups.
+    """
+
+    group_ids: List[str] = Field(
+        ...,
+        min_items=1,
+        description="List of one or more group IDs to check for violations",
+    )
+    constraint_types: Optional[List[str]] = Field(
+        None,
+        description="Optional list of constraint types to check (if None, checks all constraints)",
+    )
+
+
 class Violation(BaseModel):
     """
     Model for a pricing constraint violation.

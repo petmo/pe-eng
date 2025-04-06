@@ -5,7 +5,7 @@ Main optimization engine for the pricing engine.
 import pandas as pd
 import numpy as np
 import pulp
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from core.constraints.base import Constraint
 from core.constraints.equal_price import EqualPriceConstraint
 from core.constraints.price_order import PriceOrderConstraint
@@ -144,24 +144,29 @@ class OptimizationEngine:
         idx = np.abs(np.array(self.price_ladder) - price).argmin()
         return self.price_ladder[idx]
 
-    def detect_violations(self, scope_product_ids: List[str]) -> Dict[str, Any]:
+    def detect_violations(
+        self, scope_product_ids: List[str], constraint_types: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         """
         Mode 1: Violation Detection - Identify constraint violations for the given products
         without suggesting any price changes.
 
         Args:
             scope_product_ids: List of product IDs to check for violations.
+            constraint_types: Optional list of constraint types to check. If None, checks all.
 
         Returns:
             Dict[str, Any]: Results of the violation detection, including violations.
         """
         logger.info(
-            f"Running violation detection for {len(scope_product_ids)} products"
+            f"Running violation detection for {len(scope_product_ids)} products "
+            f"with constraint_types={constraint_types if constraint_types else 'ALL'}"
         )
 
-        # Detect violations
+        # Detect violations using the underlying ViolationDetector
         df_violations = self.violation_detector.detect_violations(
-            product_ids=scope_product_ids
+            product_ids=scope_product_ids,
+            constraint_types=constraint_types,  # pass it on for filtering
         )
 
         # Generate summary
@@ -287,6 +292,8 @@ class OptimizationEngine:
         )
 
         if mode == "violation_detection":
+            # If we want to allow constraint_types, we can pass them as a separate argument
+            # or handle it in the higher-level code.
             return self.detect_violations(scope_product_ids)
         elif mode == "hygiene_optimization":
             return self.run_hygiene_optimization(scope_product_ids)
@@ -301,7 +308,7 @@ class OptimizationEngine:
         self,
         scope_product_ids: List[str],
         objective_type: str,
-        kpi_weights: Dict[str, float] = None,
+        kpi_weights: Optional[Dict[str, float]] = None,
     ) -> Dict[str, Any]:
         """
         Internal method to run the optimization model with different objectives.
@@ -466,7 +473,6 @@ class OptimizationEngine:
 
         # Build and apply constraints
         constraints = self._build_constraints(list(all_product_ids))
-
         for constraint in constraints:
             constraint.apply_to_model(model, price_vars, self.df_products)
 
@@ -487,7 +493,6 @@ class OptimizationEngine:
 
         # Extract optimized prices
         optimized_prices = []
-
         for pid in scope_product_ids:
             current_price = self.df_products.loc[
                 self.df_products["product_id"] == pid, "price"
@@ -513,29 +518,26 @@ class OptimizationEngine:
         # Check for violations with the new prices
         # Create a temporary dataframe with the new prices
         df_new_prices = self.df_products.copy()
-
         for p in optimized_prices:
             df_new_prices.loc[
                 df_new_prices["product_id"] == p["product_id"], "price"
             ] = p["optimized_price_on_ladder"]
 
-            # Update unit price too
+            # Update unit price too, keeping the same ratio
             current_unit_price = self.df_products.loc[
                 self.df_products["product_id"] == p["product_id"], "unit_price"
             ].iloc[0]
-
             current_price = self.df_products.loc[
                 self.df_products["product_id"] == p["product_id"], "price"
             ].iloc[0]
 
-            # Maintain the same ratio between price and unit price
             if current_price > 0:
                 ratio = current_unit_price / current_price
                 df_new_prices.loc[
                     df_new_prices["product_id"] == p["product_id"], "unit_price"
                 ] = (p["optimized_price_on_ladder"] * ratio)
 
-        # Check violations with new prices
+        # Check violations with the new prices
         temp_detector = ViolationDetector(
             df_new_prices, self.df_item_groups, self.df_item_group_members
         )

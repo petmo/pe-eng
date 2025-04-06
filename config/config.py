@@ -142,6 +142,21 @@ class Config:
             except ValueError:
                 logging.warning(f"Invalid API_PORT value: {os.environ['API_PORT']}")
 
+        # API configuration
+        if os.environ.get("API_HOST"):
+            self._set_nested_value("api.host", os.environ["API_HOST"])
+
+        if os.environ.get("API_PORT"):
+            try:
+                port = int(os.environ["API_PORT"])
+                self._set_nested_value("api.port", port)
+            except ValueError:
+                logging.warning(f"Invalid API_PORT value: {os.environ['API_PORT']}")
+
+        # API key (sensitive, should be from environment)
+        if os.environ.get("API_KEY"):
+            self._set_nested_value("api.key", os.environ["API_KEY"])
+
     def _set_nested_value(self, key_path: str, value: Any) -> None:
         """
         Set a nested value in the configuration dictionary.

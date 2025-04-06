@@ -22,7 +22,19 @@ def check_violations(event, context):
     Returns:
         Dict: Response containing violations
     """
+    logger.info("⭐ Supabase Edge Function: check_violations called")
+    logger.debug(f"Event: {event}")
+
     try:
+        # Log headers received from Supabase
+        headers = event.get("headers", {})
+        safe_headers = {
+            k: v
+            for k, v in headers.items()
+            if k.lower() not in ("authorization", "x-api-key")
+        }
+        logger.debug(f"Received headers: {safe_headers}")
+
         # Parse request body
         body = (
             json.loads(event["body"])
@@ -30,11 +42,16 @@ def check_violations(event, context):
             else event.get("body", {})
         )
 
+        logger.info(f"Request body: {body}")
+
         # Get product IDs from request
         product_ids = body.get("product_ids", [])
         constraint_types = body.get("constraint_types")  # Optional
 
+        logger.info(f"Processing check_violations for {len(product_ids)} products")
+
         if not product_ids:
+            logger.warning("No product IDs provided in request")
             return {
                 "statusCode": 400,
                 "body": json.dumps(
@@ -44,14 +61,20 @@ def check_violations(event, context):
 
         # Load data from configured source
         loader = get_data_loader()
+        logger.info(f"Using data loader: {loader.__class__.__name__}")
         data = loader.get_product_group_data(product_ids)
 
         # Check if products exist
         if data["products"].empty:
+            logger.warning(f"No products found for IDs: {product_ids}")
             return {
                 "statusCode": 404,
                 "body": json.dumps({"success": False, "error": "No products found"}),
             }
+
+        logger.info(
+            f"Found {len(data['products'])} products, {len(data['item_groups'])} item groups, {len(data['item_group_members'])} group members"
+        )
 
         # Create optimization engine
         engine = OptimizationEngine(
@@ -59,13 +82,22 @@ def check_violations(event, context):
         )
 
         # Run violation detection
+        logger.info("Running violation detection...")
         result = engine.detect_violations(product_ids)
+
+        violations_count = len(result.get("violations", []))
+        logger.info(
+            f"Violation detection complete. Found {violations_count} violations."
+        )
 
         # Add constraint types filter info if provided
         if constraint_types:
             result["constraint_types_filter"] = constraint_types
 
-        return {"statusCode": 200, "body": json.dumps(result)}
+        # Prepare response
+        response = {"statusCode": 200, "body": json.dumps(result)}
+        logger.info("Returning successful response")
+        return response
 
     except Exception as e:
         logger.error(f"Error in check_violations: {e}", exc_info=True)

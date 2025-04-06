@@ -8,12 +8,15 @@ and contains core configuration functionality.
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
-from fastapi.exceptions import RequestValidationError
+from fastapi.exceptions import RequestValidationError, HTTPException
 import time
 import uvicorn
 from typing import Optional, Dict, Any
 
+from api.models import ViolationRequest, ViolationResponse
 from api.routes import violations_router, optimization_router
+from core import OptimizationEngine
+from data import get_data_loader
 from utils.logging import setup_logger
 from config.config import config
 from dotenv import load_dotenv
@@ -63,6 +66,146 @@ def create_app() -> FastAPI:
         process_time = time.time() - start_time
         response.headers["X-Process-Time"] = str(process_time)
         return response
+
+    # Add middleware for API key validation
+    @app.middleware("http")
+    async def validate_api_key(request: Request, call_next):
+        """Validate API key for protected routes."""
+        # Skip auth for certain paths
+        public_paths = ["/docs", "/redoc", "/openapi.json", "/ping", "/"]
+        if any(request.url.path.startswith(path) for path in public_paths):
+            return await call_next(request)
+
+        # Get the API key from the request header
+        api_key = request.headers.get("X-API-Key")
+        expected_api_key = config.get("api.key", "default_api_key")  # Get from config
+
+        # Log information for debugging
+        logger.debug(f"Validating API key for path: {request.url.path}")
+        logger.debug(f"Received API key: {'[PRESENT]' if api_key else '[MISSING]'}")
+
+        if not api_key or api_key != expected_api_key:
+            logger.warning(f"Invalid API key used to access: {request.url.path}")
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "error": "Invalid or missing API key"},
+            )
+
+        return await call_next(request)
+
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        """Log all incoming requests."""
+        path = request.url.path
+        method = request.method
+        client_host = request.client.host if request.client else "unknown"
+
+        logger.info(f"Request: {method} {path} from {client_host}")
+
+        # Log headers (excluding sensitive ones)
+        headers_log = {}
+        for k, v in request.headers.items():
+            if k.lower() not in ("authorization", "x-api-key"):
+                headers_log[k] = v
+            else:
+                headers_log[k] = "[REDACTED]"
+
+        logger.debug(f"Request headers: {headers_log}")
+
+        try:
+            # Attempt to log request body for debugging
+            if method in ["POST", "PUT", "PATCH"]:
+                # Create a copy of the request to avoid consuming the stream
+                body_bytes = await request.body()
+
+                # Try to parse as JSON for better logging
+                try:
+                    import json
+
+                    body_str = body_bytes.decode()
+                    if body_str:
+                        body_json = json.loads(body_str)
+                        logger.debug(f"Request body: {body_json}")
+                except:
+                    if len(body_bytes) > 1000:
+                        logger.debug(
+                            f"Request body: [binary data, {len(body_bytes)} bytes]"
+                        )
+                    else:
+                        logger.debug(f"Request body: {body_bytes}")
+
+                # Create a new request with the same body to pass to the next middleware
+                request = Request(
+                    scope=request.scope,
+                    receive=receive_with_body(body_bytes),
+                )
+        except Exception as e:
+            logger.debug(f"Could not log request body: {e}")
+
+        # Process the request
+        start_time = time.time()
+        try:
+            response = await call_next(request)
+            process_time = time.time() - start_time
+            status_code = response.status_code
+
+            # Log the response
+            logger.info(
+                f"Response: {status_code} for {method} {path} - took {process_time:.4f}s"
+            )
+
+            # Add processing time header
+            response.headers["X-Process-Time"] = str(process_time)
+
+            return response
+        except Exception as e:
+            process_time = time.time() - start_time
+            logger.error(
+                f"Error during {method} {path}: {e} - took {process_time:.4f}s"
+            )
+            raise
+
+    # Helper function for request body logging
+    def receive_with_body(body: bytes):
+        async def receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        return receive
+
+    # Direct route for /api/check-violations endpoint
+    @app.post(
+        "/api/check-violations", tags=["violations"], response_model=ViolationResponse
+    )
+    async def check_violations_direct(request: ViolationRequest):
+        """
+        Direct endpoint for check-violations to match the expected URL path from Supabase.
+        """
+        logger.info(
+            f"Direct check_violations endpoint called with {len(request.product_ids)} products"
+        )
+
+        # Load data from configured source
+        loader = get_data_loader()
+        data = loader.get_product_group_data(request.product_ids)
+
+        # Check if products exist
+        if data["products"].empty:
+            logger.warning(f"No products found for IDs: {request.product_ids}")
+            raise HTTPException(status_code=404, detail="No products found")
+
+        # Create optimization engine
+        engine = OptimizationEngine(
+            data["products"], data["item_groups"], data["item_group_members"]
+        )
+
+        # Run violation detection
+        result = engine.detect_violations(request.product_ids)
+
+        # Add constraint types filter info if provided
+        if request.constraint_types:
+            result["constraint_types_filter"] = request.constraint_types
+
+        return result
 
     # Custom exception handlers
     @app.exception_handler(RequestValidationError)
@@ -130,6 +273,10 @@ def start_server(host: Optional[str] = None, port: Optional[int] = None):
     uvicorn.run(
         app, host=host, port=port, log_level=config.get("logging.level", "info").lower()
     )
+
+
+# For functional FastAPI-integration in pycyarm
+app = create_app()
 
 
 if __name__ == "__main__":
