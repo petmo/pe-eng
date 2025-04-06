@@ -8,11 +8,13 @@ import pandas as pd
 from typing import List, Dict, Any, Optional
 from config.config import config
 from utils.logging import setup_logger
+from data.loader import DataLoader
+from data.local.file_system import FileSystem
 
 logger = setup_logger(__name__)
 
 
-class LocalCSVLoader:
+class LocalCSVLoader(DataLoader):
     """
     Loader class for fetching data from local CSV files.
     """
@@ -21,19 +23,15 @@ class LocalCSVLoader:
         """
         Initialize the local CSV loader.
         """
-        self.base_path = config.get("data_source.local_data_path", "data/local")
-
-        # Check if the path exists
-        if not os.path.exists(self.base_path):
-            logger.warning(f"Local data path '{self.base_path}' does not exist")
+        self.file_system = FileSystem()
 
         # File paths
-        self.products_path = os.path.join(self.base_path, "products.csv")
-        self.item_groups_path = os.path.join(self.base_path, "item_groups.csv")
-        self.item_group_members_path = os.path.join(
-            self.base_path, "item_group_members.csv"
+        self.products_path = self.file_system.get_file_path("products")
+        self.item_groups_path = self.file_system.get_file_path("item_groups")
+        self.item_group_members_path = self.file_system.get_file_path(
+            "item_group_members"
         )
-        self.price_ladder_path = os.path.join(self.base_path, "price_ladder.csv")
+        self.price_ladder_path = self.file_system.get_file_path("price_ladder")
 
         # Check if files exist
         for path, name in [
@@ -42,7 +40,7 @@ class LocalCSVLoader:
             (self.item_group_members_path, "item_group_members"),
             (self.price_ladder_path, "price_ladder"),
         ]:
-            if not os.path.exists(path):
+            if not path.exists():
                 logger.warning(f"Local data file '{name}.csv' not found at '{path}'")
 
     def get_products(self, product_ids: Optional[List[str]] = None) -> pd.DataFrame:

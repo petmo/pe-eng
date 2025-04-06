@@ -5,7 +5,7 @@ Configuration loader for the pricing engine.
 import os
 import yaml
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -84,12 +84,63 @@ class Config:
         if os.environ.get("SUPABASE_KEY"):
             self._set_nested_value("supabase.key", os.environ["SUPABASE_KEY"])
 
-        # Other sensitive credentials would be added here
-        # Example: AWS credentials, API keys, etc.
+        # Data source configuration
+        if os.environ.get("USE_LOCAL_DATA") in ["true", "True", "1", "yes"]:
+            self._set_nested_value("data_source.use_local", True)
+        elif os.environ.get("USE_LOCAL_DATA") in ["false", "False", "0", "no"]:
+            self._set_nested_value("data_source.use_local", False)
+
+        if os.environ.get("LOCAL_DATA_PATH"):
+            self._set_nested_value(
+                "data_source.local_data_path", os.environ["LOCAL_DATA_PATH"]
+            )
+
+        # Price ladder configuration
+        if os.environ.get("PRICE_LADDER_TYPE"):
+            self._set_nested_value("price_ladder.type", os.environ["PRICE_LADDER_TYPE"])
+
+        if os.environ.get("PRICE_LADDER_MAX"):
+            try:
+                max_price = float(os.environ["PRICE_LADDER_MAX"])
+                self._set_nested_value("price_ladder.max_price", max_price)
+            except ValueError:
+                logging.warning(
+                    f"Invalid PRICE_LADDER_MAX value: {os.environ['PRICE_LADDER_MAX']}"
+                )
+
+        # Price change constraints
+        if os.environ.get("PRICE_CHANGE_MIN_PCT"):
+            try:
+                min_pct = float(os.environ["PRICE_CHANGE_MIN_PCT"])
+                self._set_nested_value("price_change.min_pct", min_pct)
+            except ValueError:
+                logging.warning(
+                    f"Invalid PRICE_CHANGE_MIN_PCT value: {os.environ['PRICE_CHANGE_MIN_PCT']}"
+                )
+
+        if os.environ.get("PRICE_CHANGE_MAX_PCT"):
+            try:
+                max_pct = float(os.environ["PRICE_CHANGE_MAX_PCT"])
+                self._set_nested_value("price_change.max_pct", max_pct)
+            except ValueError:
+                logging.warning(
+                    f"Invalid PRICE_CHANGE_MAX_PCT value: {os.environ['PRICE_CHANGE_MAX_PCT']}"
+                )
 
         # Logging level can be set via environment for convenience in different environments
         if os.environ.get("LOG_LEVEL"):
             self._set_nested_value("logging.level", os.environ["LOG_LEVEL"])
+
+        # API configuration
+        if os.environ.get("API_HOST"):
+            self._set_nested_value("api.host", os.environ["API_HOST"])
+
+        if os.environ.get("API_PORT"):
+            try:
+                port = int(os.environ["API_PORT"])
+                self._set_nested_value("api.port", port)
+            except ValueError:
+                logging.warning(f"Invalid API_PORT value: {os.environ['API_PORT']}")
 
     def _set_nested_value(self, key_path: str, value: Any) -> None:
         """
@@ -141,6 +192,97 @@ class Config:
             Dict[str, Any]: The entire configuration dictionary.
         """
         return self._config
+
+    def get_logging_config(self) -> Dict[str, Any]:
+        """
+        Get logging configuration.
+
+        Returns:
+            Dict[str, Any]: Logging configuration.
+        """
+        return {
+            "level": self.get("logging.level", "INFO"),
+            "use_color": self.get("logging.use_color", True),
+            "format": self.get(
+                "logging.format",
+                "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+            ),
+            "datefmt": self.get("logging.datefmt", "%Y-%m-%d %H:%M:%S"),
+        }
+
+    def get_api_config(self) -> Dict[str, Any]:
+        """
+        Get API configuration.
+
+        Returns:
+            Dict[str, Any]: API configuration.
+        """
+        return {
+            "host": self.get("api.host", "0.0.0.0"),
+            "port": self.get("api.port", 8000),
+        }
+
+    def get_data_source_config(self) -> Dict[str, Any]:
+        """
+        Get data source configuration.
+
+        Returns:
+            Dict[str, Any]: Data source configuration.
+        """
+        return {
+            "use_local": self.get("data_source.use_local", False),
+            "local_data_path": self.get("data_source.local_data_path", "data/local"),
+        }
+
+    def get_price_ladder_config(self) -> Dict[str, Any]:
+        """
+        Get price ladder configuration.
+
+        Returns:
+            Dict[str, Any]: Price ladder configuration.
+        """
+        return {
+            "type": self.get("price_ladder.type", "x.99"),
+            "max_price": self.get("price_ladder.max_price", 2000.0),
+        }
+
+    def get_price_change_config(self) -> Dict[str, Any]:
+        """
+        Get price change configuration.
+
+        Returns:
+            Dict[str, Any]: Price change configuration.
+        """
+        return {
+            "min_pct": self.get("price_change.min_pct", -10.0),
+            "max_pct": self.get("price_change.max_pct", 10.0),
+        }
+
+    def get_supabase_config(self) -> Optional[Dict[str, Any]]:
+        """
+        Get Supabase configuration if available.
+
+        Returns:
+            Optional[Dict[str, Any]]: Supabase configuration or None if not configured.
+        """
+        url = self.get("supabase.url")
+        key = self.get("supabase.key")
+
+        if not url or not key:
+            return None
+
+        return {
+            "url": url,
+            "key": key,
+            "tables": self.get(
+                "supabase.tables",
+                {
+                    "products": "products",
+                    "item_groups": "item_groups",
+                    "item_group_members": "item_group_members",
+                },
+            ),
+        }
 
 
 # Create a global configuration instance

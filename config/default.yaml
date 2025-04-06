@@ -1,19 +1,24 @@
 # Pricing Engine Configuration
 
+# API server configuration
+api:
+  host: "0.0.0.0"  # Listen on all available interfaces
+  port: 8000       # Default port
+
 # Price ladder configuration
 price_ladder:
-  type: "x.99"  # Every digit minus 1 øre
+  type: "x.99"     # Every digit minus 1 øre
   max_price: 2000  # Max price in NOK
 
 # Price change constraints (business configuration parameters)
 price_change:
-  min_pct: -10  # Minimum price change percentage
-  max_pct: 10   # Maximum price change percentage
+  min_pct: -10     # Minimum price change percentage
+  max_pct: 10      # Maximum price change percentage
 
 # Data source configuration
 data_source:
   use_local: false  # Set to true to use local CSV files instead of Supabase
-  local_data_path: "data/local"  # Path to local data files
+  local_data_path: "data/local/csv"  # Path to local data files
 
 # Supabase configuration (should be set via environment variables)
 supabase:

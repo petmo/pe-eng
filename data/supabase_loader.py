@@ -1,17 +1,19 @@
 """
 Data loader for fetching data from Supabase.
 """
+
 import pandas as pd
 from typing import List, Dict, Any, Optional
 import json
 from supabase import create_client
 from config.config import config
 from utils.logging import setup_logger
+from data.loader import DataLoader
 
 logger = setup_logger(__name__)
 
 
-class SupabaseLoader:
+class SupabaseLoader(DataLoader):
     """
     Loader class for fetching data from Supabase.
     """
@@ -20,7 +22,25 @@ class SupabaseLoader:
         """
         Initialize the Supabase client.
         """
-        self.client = create_client(config.get("supabase.url"), config.get("supabase.key"))
+        self.client = None
+        self._initialize_client()
+
+    def _initialize_client(self):
+        """
+        Initialize the Supabase client.
+        """
+        try:
+            url = config.get("supabase.url")
+            key = config.get("supabase.key")
+
+            if not url or not key:
+                logger.warning("Supabase URL or key not configured")
+                return
+
+            self.client = create_client(url, key)
+            logger.info("Supabase client initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing Supabase client: {e}", exc_info=True)
 
     def get_products(self, product_ids: Optional[List[str]] = None) -> pd.DataFrame:
         """
@@ -32,26 +52,37 @@ class SupabaseLoader:
         Returns:
             pd.DataFrame: DataFrame containing product data.
         """
-        query = self.client.table(config.get("supabase.tables.products")).select("*")
+        if not self.client:
+            logger.error("Supabase client not initialized")
+            return pd.DataFrame()
 
-        if product_ids:
-            query = query.in_("product_id", product_ids)
+        try:
+            query = self.client.table(
+                config.get("supabase.tables.products", "products")
+            ).select("*")
 
-        response = query.execute()
+            if product_ids:
+                query = query.in_("product_id", product_ids)
 
-        if response.data:
-            df_products = pd.DataFrame(response.data)
-            logger.info(f"Fetched {len(df_products)} products")
+            response = query.execute()
 
-            # Parse JSON attributes if they're stored as strings
-            if 'attributes' in df_products.columns:
-                df_products['attributes'] = df_products['attributes'].apply(
-                    lambda x: json.loads(x) if isinstance(x, str) else x
-                )
+            if response.data:
+                df_products = pd.DataFrame(response.data)
+                logger.info(f"Fetched {len(df_products)} products")
 
-            return df_products
-        else:
-            logger.warning("No products found")
+                # Parse JSON attributes if they're stored as strings
+                if "attributes" in df_products.columns:
+                    df_products["attributes"] = df_products["attributes"].apply(
+                        lambda x: json.loads(x) if isinstance(x, str) else x
+                    )
+
+                return df_products
+            else:
+                logger.warning("No products found")
+                return pd.DataFrame()
+
+        except Exception as e:
+            logger.error(f"Error fetching products from Supabase: {e}", exc_info=True)
             return pd.DataFrame()
 
     def get_item_groups(self) -> pd.DataFrame:
@@ -61,17 +92,36 @@ class SupabaseLoader:
         Returns:
             pd.DataFrame: DataFrame containing item group data.
         """
-        response = self.client.table(config.get("supabase.tables.item_groups")).select("*").execute()
-
-        if response.data:
-            df_item_groups = pd.DataFrame(response.data)
-            logger.info(f"Fetched {len(df_item_groups)} item groups")
-            return df_item_groups
-        else:
-            logger.warning("No item groups found")
+        if not self.client:
+            logger.error("Supabase client not initialized")
             return pd.DataFrame()
 
-    def get_item_group_members(self, group_ids: Optional[List[str]] = None) -> pd.DataFrame:
+        try:
+            response = (
+                self.client.table(
+                    config.get("supabase.tables.item_groups", "item_groups")
+                )
+                .select("*")
+                .execute()
+            )
+
+            if response.data:
+                df_item_groups = pd.DataFrame(response.data)
+                logger.info(f"Fetched {len(df_item_groups)} item groups")
+                return df_item_groups
+            else:
+                logger.warning("No item groups found")
+                return pd.DataFrame()
+
+        except Exception as e:
+            logger.error(
+                f"Error fetching item groups from Supabase: {e}", exc_info=True
+            )
+            return pd.DataFrame()
+
+    def get_item_group_members(
+        self, group_ids: Optional[List[str]] = None
+    ) -> pd.DataFrame:
         """
         Fetch item group members from Supabase.
 
@@ -81,20 +131,56 @@ class SupabaseLoader:
         Returns:
             pd.DataFrame: DataFrame containing item group member data.
         """
-        query = self.client.table(config.get("supabase.tables.item_group_members")).select("*")
-
-        if group_ids:
-            query = query.in_("group_id", group_ids)
-
-        response = query.execute()
-
-        if response.data:
-            df_item_group_members = pd.DataFrame(response.data)
-            logger.info(f"Fetched {len(df_item_group_members)} item group members")
-            return df_item_group_members
-        else:
-            logger.warning("No item group members found")
+        if not self.client:
+            logger.error("Supabase client not initialized")
             return pd.DataFrame()
+
+        try:
+            query = self.client.table(
+                config.get("supabase.tables.item_group_members", "item_group_members")
+            ).select("*")
+
+            if group_ids:
+                query = query.in_("group_id", group_ids)
+
+            response = query.execute()
+
+            if response.data:
+                df_item_group_members = pd.DataFrame(response.data)
+                logger.info(f"Fetched {len(df_item_group_members)} item group members")
+                return df_item_group_members
+            else:
+                logger.warning("No item group members found")
+                return pd.DataFrame()
+
+        except Exception as e:
+            logger.error(
+                f"Error fetching item group members from Supabase: {e}", exc_info=True
+            )
+            return pd.DataFrame()
+
+    def get_price_ladder(self) -> List[float]:
+        """
+        Fetch price ladder from Supabase.
+
+        Returns:
+            List[float]: List of valid prices on the price ladder.
+        """
+        # TODO: Implement fetching price ladder from Supabase
+        # For now, generate based on config
+        ladder_type = config.get("price_ladder.type", "x.99")
+        max_price = config.get("price_ladder.max_price", 2000)
+
+        if ladder_type == "x.99":
+            # Generate prices like 0.99, 1.99, 2.99, etc.
+            ladder = [float(f"{i}.99") for i in range(int(max_price))]
+            logger.info(f"Generated {len(ladder)} prices for price ladder")
+            return ladder
+        else:
+            # Default: 0.01 increments
+            ladder = [round(i * 0.01, 2) for i in range(1, int(max_price * 100) + 1)]
+            logger.info(f"Generated {len(ladder)} prices for price ladder")
+            return ladder
 
     def get_product_group_data(self, product_ids: List[str]) -> Dict[str, pd.DataFrame]:
         """
@@ -113,7 +199,7 @@ class SupabaseLoader:
             return {
                 "products": pd.DataFrame(),
                 "item_groups": pd.DataFrame(),
-                "item_group_members": pd.DataFrame()
+                "item_group_members": pd.DataFrame(),
             }
 
         # Get item groups and members
@@ -123,7 +209,7 @@ class SupabaseLoader:
             return {
                 "products": df_products,
                 "item_groups": pd.DataFrame(),
-                "item_group_members": pd.DataFrame()
+                "item_group_members": pd.DataFrame(),
             }
 
         # Get item group members that include our products
@@ -133,7 +219,7 @@ class SupabaseLoader:
             return {
                 "products": df_products,
                 "item_groups": df_item_groups,
-                "item_group_members": pd.DataFrame()
+                "item_group_members": pd.DataFrame(),
             }
 
         # Filter to include only members that involve our product_ids
@@ -147,17 +233,25 @@ class SupabaseLoader:
         ]
 
         # Get additional products that are in the same groups but not in our initial scope
-        additional_product_ids = df_all_group_members[
-            ~df_all_group_members["product_id"].isin(product_ids)
-        ]["product_id"].unique().tolist()
+        additional_product_ids = (
+            df_all_group_members[~df_all_group_members["product_id"].isin(product_ids)][
+                "product_id"
+            ]
+            .unique()
+            .tolist()
+        )
 
         # Fetch these additional products
         if additional_product_ids:
             df_additional_products = self.get_products(additional_product_ids)
-            df_products = pd.concat([df_products, df_additional_products], ignore_index=True)
+            df_products = pd.concat(
+                [df_products, df_additional_products], ignore_index=True
+            )
 
         return {
             "products": df_products,
-            "item_groups": df_item_groups[df_item_groups["group_id"].isin(relevant_groups)],
-            "item_group_members": df_all_group_members
+            "item_groups": df_item_groups[
+                df_item_groups["group_id"].isin(relevant_groups)
+            ],
+            "item_group_members": df_all_group_members,
         }

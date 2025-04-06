@@ -19,14 +19,17 @@ def setup_logger(name):
     """
     logger = logging.getLogger(name)
 
+    # Get logging configuration from config
+    logging_config = config.get_logging_config()
+
     # Set the level from config
-    level = config.get("logging.level", "INFO")
+    level = logging_config["level"]
     logger.setLevel(getattr(logging, level))
 
     # Avoid adding handlers if they already exist
     if not logger.handlers:
         # Get color settings from config
-        use_color = config.get("logging.use_color", True)
+        use_color = logging_config["use_color"]
 
         # Create a handler that outputs to the stdout
         handler = logging.StreamHandler(sys.stdout)
@@ -34,8 +37,8 @@ def setup_logger(name):
         if use_color:
             # Set up a colored formatter
             formatter = colorlog.ColoredFormatter(
-                "%(log_color)s%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
+                "%(log_color)s" + logging_config["format"],
+                datefmt=logging_config["datefmt"],
                 reset=True,
                 log_colors={
                     'DEBUG': 'cyan',
@@ -50,8 +53,8 @@ def setup_logger(name):
         else:
             # Set up a regular formatter
             formatter = logging.Formatter(
-                "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S"
+                logging_config["format"],
+                datefmt=logging_config["datefmt"]
             )
 
         handler.setFormatter(formatter)
