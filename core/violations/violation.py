@@ -111,10 +111,13 @@ class ViolationDetector:
         Returns:
             Dict[str, List[Constraint]]: Dictionary mapping group types to lists of constraints.
         """
+
         constraints = {
             "equal_price": [],
-            "good_better_best": [],
-            "bigger_pack_better_value": [],
+            "relative_price_order": [],
+            "absolute_price_order": [],
+            "relative_pack_value": [],
+            "absolute_pack_value": [],
         }
 
         # Check if we have all the required columns
@@ -149,7 +152,17 @@ class ViolationDetector:
             if df_members.empty:
                 continue
 
-            # Create appropriate constraint based on group type
+            # Get flags from group row, defaulting to False if not present
+            use_price_per_unit = group_row.get("use_price_per_unit", False)
+            use_absolute_price_diff = group_row.get("use_absolute_price_diff", False)
+
+            logger.debug(
+                f"Building constraint for group {group_id}, type={group_type}, "
+                f"use_price_per_unit={use_price_per_unit}, "
+                f"use_absolute_price_diff={use_absolute_price_diff}"
+            )
+
+            # Create appropriate constraint based on group type and flags
             if group_type == "equal":
                 product_ids = df_members["product_id"].tolist()
                 constraints["equal_price"].append(
@@ -157,17 +170,34 @@ class ViolationDetector:
                 )
 
             elif group_type == "good-better-best":
-                use_price_per_unit = group_row.get("use_price_per_unit", False)
-                constraints["good_better_best"].append(
-                    PriceOrderConstraint(group_id, df_members, use_price_per_unit)
-                )
+                if use_absolute_price_diff:
+                    constraints["absolute_price_order"].append(
+                        AbsolutePriceOrderConstraint(
+                            group_id, df_members, use_price_per_unit
+                        )
+                    )
+                else:
+                    constraints["relative_price_order"].append(
+                        RelativePriceOrderConstraint(
+                            group_id, df_members, use_price_per_unit
+                        )
+                    )
 
             elif group_type == "bigger-pack-better-value":
-                constraints["bigger_pack_better_value"].append(
-                    PackValueConstraint(group_id, df_members)
-                )
+                if use_absolute_price_diff:
+                    constraints["absolute_pack_value"].append(
+                        AbsolutePackValueConstraint(group_id, df_members)
+                    )
+                else:
+                    constraints["relative_pack_value"].append(
+                        RelativePackValueConstraint(group_id, df_members)
+                    )
 
-        logger.info(f"Built {sum(len(c) for c in constraints.values())} constraints")
+        # Log the constraint counts
+        constraint_counts = {k: len(v) for k, v in constraints.items() if len(v) > 0}
+        logger.info(f"Built constraints by type: {constraint_counts}")
+        logger.info(f"Total constraints: {sum(len(c) for c in constraints.values())}")
+
         return constraints
 
     def detect_violations(

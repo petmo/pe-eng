@@ -3,7 +3,7 @@ Equal price constraint implementation.
 """
 
 import pandas as pd
-from typing import List, Dict
+from typing import List, Dict, Optional
 import pulp
 from core.constraints.base import Constraint
 from utils.logging import setup_logger
@@ -24,8 +24,11 @@ class EqualPriceConstraint(Constraint):
             group_id: ID of the item group.
             product_ids: List of product IDs in the group.
         """
+        super().__init__()
         self.group_id = group_id
         self.product_ids = product_ids
+        self._name = f"EqualPriceConstraint_{group_id}"
+        self._priority = self.PRIORITY_HIGH
 
     def check_violations(self, df_products: pd.DataFrame, **kwargs) -> pd.DataFrame:
         """
@@ -113,3 +116,29 @@ class EqualPriceConstraint(Constraint):
         logger.debug(
             f"Added equal price constraint for group {self.group_id} with {len(product_ids)} products"
         )
+
+    def get_relaxed_version(
+        self, relaxation_factor: float = 0.1
+    ) -> Optional["Constraint"]:
+        """
+        Relax equal price constraint by converting to a RelativeRangeConstraint.
+
+        Args:
+            relaxation_factor: Factor by which to relax the constraint
+
+        Returns:
+            RelativeRangeConstraint: A relaxed version allowing small differences
+        """
+        from core.constraints.relative_range import RelativeRangeConstraint
+
+        # Convert to a range constraint with a small allowed difference
+        # Start with a 5% difference range (105%)
+        relaxed_constraint = RelativeRangeConstraint(
+            self.group_id, self.product_ids, max_diff=105
+        )
+        relaxed_constraint.priority = self.priority
+        relaxed_constraint.name = f"Relaxed_{self.name}"
+
+        logger.info(f"Relaxed {self.name} from equal prices to max_diff=5%")
+
+        return relaxed_constraint

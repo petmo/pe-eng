@@ -1,10 +1,10 @@
 """
-Pack value constraint implementation (Bigger-Pack-Better-Value).
+Relative pack value constraint implementation (Bigger-Pack-Better-Value with percentage differences).
 """
 
 import pandas as pd
 import json
-from typing import Dict
+from typing import Dict, Any, Optional
 import pulp
 from core.constraints.base import Constraint
 from utils.logging import setup_logger
@@ -12,21 +12,24 @@ from utils.logging import setup_logger
 logger = setup_logger(__name__)
 
 
-class PackValueConstraint(Constraint):
+class RelativePackValueConstraint(Constraint):
     """
-    Constraint ensuring that bigger packs offer better value (using unit price).
+    Constraint ensuring that bigger packs offer better value (using unit price) with percentage differences.
     """
 
     def __init__(self, group_id: str, df_members: pd.DataFrame):
         """
-        Initialize the pack value constraint.
+        Initialize the relative pack value constraint.
 
         Args:
             group_id: ID of the item group.
             df_members: DataFrame containing group members with their order and index ranges.
         """
+        super().__init__()
         self.group_id = group_id
         self.df_members = df_members
+        self._name = f"RelativePackValueConstraint_{group_id}"
+        self._priority = self.PRIORITY_MEDIUM
 
     def _extract_size_quantity(self, attributes):
         """
@@ -51,7 +54,7 @@ class PackValueConstraint(Constraint):
 
     def check_violations(self, df_products: pd.DataFrame, **kwargs) -> pd.DataFrame:
         """
-        Check for violations of the pack value constraint.
+        Check for violations of the relative pack value constraint.
 
         Args:
             df_products: DataFrame containing product data.
@@ -79,7 +82,7 @@ class PackValueConstraint(Constraint):
                 violations.append(
                     {
                         "product_id": row["product_id"],
-                        "constraint_type": "pack_value_missing_size",
+                        "constraint_type": "relative_pack_value_missing_size",
                         "group_id": self.group_id,
                         "expected_value": "size_quantity",
                         "actual_value": "missing",
@@ -134,7 +137,7 @@ class PackValueConstraint(Constraint):
                 violations.append(
                     {
                         "product_id": row["product_id"],
-                        "constraint_type": "pack_value_min",
+                        "constraint_type": "relative_pack_value_min",
                         "group_id": self.group_id,
                         "expected_value": min_index,
                         "actual_value": actual_index,
@@ -147,7 +150,7 @@ class PackValueConstraint(Constraint):
                 violations.append(
                     {
                         "product_id": row["product_id"],
-                        "constraint_type": "pack_value_max",
+                        "constraint_type": "relative_pack_value_max",
                         "group_id": self.group_id,
                         "expected_value": max_index,
                         "actual_value": actual_index,
@@ -159,7 +162,7 @@ class PackValueConstraint(Constraint):
 
         if violations:
             logger.info(
-                f"Found {len(violations)} pack value violations in group {self.group_id}"
+                f"Found {len(violations)} relative pack value violations in group {self.group_id}"
             )
 
         return pd.DataFrame(violations) if violations else pd.DataFrame()
@@ -249,7 +252,7 @@ class PackValueConstraint(Constraint):
                 model += (
                     variables[product_id] * product_factor
                     >= (min_index / 100) * variables[base_product_id] * base_factor,
-                    f"pack_value_min_{self.group_id}_{product_id}",
+                    f"relative_pack_value_min_{self.group_id}_{product_id}",
                 )
 
             # Apply max index constraint
@@ -257,7 +260,42 @@ class PackValueConstraint(Constraint):
                 model += (
                     variables[product_id] * product_factor
                     <= (max_index / 100) * variables[base_product_id] * base_factor,
-                    f"pack_value_max_{self.group_id}_{product_id}",
+                    f"relative_pack_value_max_{self.group_id}_{product_id}",
                 )
 
-        logger.debug(f"Added pack value constraints for group {self.group_id}")
+        logger.debug(f"Added relative pack value constraints for group {self.group_id}")
+
+    def get_relaxed_version(
+        self, relaxation_factor: float = 0.1
+    ) -> Optional["Constraint"]:
+        """
+        Get a relaxed version of this constraint by adjusting min/max index values.
+
+        Args:
+            relaxation_factor: Factor by which to relax the constraint
+
+        Returns:
+            RelativePackValueConstraint: A relaxed version of this constraint
+        """
+        # Create a copy of members with relaxed min/max indexes
+        relaxed_members = self.df_members.copy()
+
+        # Relax min/max indexes by the relaxation factor
+        if "min_index" in relaxed_members.columns:
+            relaxed_members["min_index"] = relaxed_members["min_index"].apply(
+                lambda x: x * (1 - relaxation_factor) if pd.notna(x) else x
+            )
+
+        if "max_index" in relaxed_members.columns:
+            relaxed_members["max_index"] = relaxed_members["max_index"].apply(
+                lambda x: x * (1 + relaxation_factor) if pd.notna(x) else x
+            )
+
+        # Create a new constraint with relaxed parameters
+        relaxed_constraint = RelativePackValueConstraint(self.group_id, relaxed_members)
+        relaxed_constraint.priority = self.priority
+        relaxed_constraint.name = f"Relaxed_{self.name}"
+
+        logger.info(f"Relaxed {self.name} min/max indexes by {relaxation_factor*100}%")
+
+        return relaxed_constraint

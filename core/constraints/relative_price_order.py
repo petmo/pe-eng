@@ -1,9 +1,9 @@
 """
-Price order constraint implementation (Good-Better-Best).
+Relative price order constraint implementation (Good-Better-Best with percentage differences).
 """
 
 import pandas as pd
-from typing import Dict
+from typing import Dict, Optional
 import pulp
 from core.constraints.base import Constraint
 from utils.logging import setup_logger
@@ -11,29 +11,32 @@ from utils.logging import setup_logger
 logger = setup_logger(__name__)
 
 
-class PriceOrderConstraint(Constraint):
+class RelativePriceOrderConstraint(Constraint):
     """
-    Constraint ensuring that items follow a price order (good-better-best).
+    Constraint ensuring that items follow a price order (good-better-best) using percentage differences.
     """
 
     def __init__(
         self, group_id: str, df_members: pd.DataFrame, use_price_per_unit: bool = False
     ):
         """
-        Initialize the price order constraint.
+        Initialize the relative price order constraint.
 
         Args:
             group_id: ID of the item group.
             df_members: DataFrame containing group members with their order and index ranges.
             use_price_per_unit: Whether to use unit price instead of price.
         """
+        super().__init__()
         self.group_id = group_id
         self.df_members = df_members
         self.use_price_per_unit = use_price_per_unit
+        self._name = f"RelativePriceOrderConstraint_{group_id}"
+        self._priority = self.PRIORITY_MEDIUM
 
     def check_violations(self, df_products: pd.DataFrame, **kwargs) -> pd.DataFrame:
         """
-        Check for violations of the price order constraint.
+        Check for violations of the relative price order constraint.
 
         Args:
             df_products: DataFrame containing product data.
@@ -83,7 +86,7 @@ class PriceOrderConstraint(Constraint):
                 violations.append(
                     {
                         "product_id": row["product_id"],
-                        "constraint_type": "price_order_base",
+                        "constraint_type": "relative_price_order_base",
                         "group_id": self.group_id,
                         "expected_value": 100,
                         "actual_value": actual_index,
@@ -97,7 +100,7 @@ class PriceOrderConstraint(Constraint):
                     violations.append(
                         {
                             "product_id": row["product_id"],
-                            "constraint_type": "price_order_min",
+                            "constraint_type": "relative_price_order_min",
                             "group_id": self.group_id,
                             "expected_value": min_index,
                             "actual_value": actual_index,
@@ -109,7 +112,7 @@ class PriceOrderConstraint(Constraint):
                     violations.append(
                         {
                             "product_id": row["product_id"],
-                            "constraint_type": "price_order_max",
+                            "constraint_type": "relative_price_order_max",
                             "group_id": self.group_id,
                             "expected_value": max_index,
                             "actual_value": actual_index,
@@ -122,7 +125,7 @@ class PriceOrderConstraint(Constraint):
             return pd.DataFrame()
 
         logger.info(
-            f"Found {len(violations)} price order violations in group {self.group_id}"
+            f"Found {len(violations)} relative price order violations in group {self.group_id}"
         )
         return pd.DataFrame(violations)
 
@@ -204,7 +207,7 @@ class PriceOrderConstraint(Constraint):
                 model += (
                     variables[product_id] * product_factor
                     >= (min_index / 100) * variables[base_product_id] * base_factor,
-                    f"price_order_min_{self.group_id}_{product_id}",
+                    f"relative_price_order_min_{self.group_id}_{product_id}",
                 )
 
             # Apply max index constraint
@@ -212,7 +215,46 @@ class PriceOrderConstraint(Constraint):
                 model += (
                     variables[product_id] * product_factor
                     <= (max_index / 100) * variables[base_product_id] * base_factor,
-                    f"price_order_max_{self.group_id}_{product_id}",
+                    f"relative_price_order_max_{self.group_id}_{product_id}",
                 )
 
-        logger.debug(f"Added price order constraints for group {self.group_id}"),
+        logger.debug(
+            f"Added relative price order constraints for group {self.group_id}"
+        )
+
+    def get_relaxed_version(
+        self, relaxation_factor: float = 0.1
+    ) -> Optional["Constraint"]:
+        """
+        Get a relaxed version of this constraint by adjusting min/max index values.
+
+        Args:
+            relaxation_factor: Factor by which to relax the constraint
+
+        Returns:
+            RelativePriceOrderConstraint: A relaxed version of this constraint
+        """
+        # Create a copy of members with relaxed min/max indexes
+        relaxed_members = self.df_members.copy()
+
+        # Relax min/max indexes by the relaxation factor
+        if "min_index" in relaxed_members.columns:
+            relaxed_members["min_index"] = relaxed_members["min_index"].apply(
+                lambda x: x * (1 - relaxation_factor) if pd.notna(x) else x
+            )
+
+        if "max_index" in relaxed_members.columns:
+            relaxed_members["max_index"] = relaxed_members["max_index"].apply(
+                lambda x: x * (1 + relaxation_factor) if pd.notna(x) else x
+            )
+
+        # Create a new constraint with relaxed parameters
+        relaxed_constraint = RelativePriceOrderConstraint(
+            self.group_id, relaxed_members, self.use_price_per_unit
+        )
+        relaxed_constraint.priority = self.priority
+        relaxed_constraint.name = f"Relaxed_{self.name}"
+
+        logger.info(f"Relaxed {self.name} min/max indexes by {relaxation_factor*100}%")
+
+        return relaxed_constraint
